@@ -2,6 +2,7 @@ import io
 import os
 import __main__
 import datetime
+import traceback
 import contextlib
 
 _empty = object()
@@ -100,6 +101,29 @@ class Log:
     def fatal(self, message, *v) -> None:
         self._write("FATAL", message, v)
         exit(0)
+
+    def error(self, error_or_message, *v) -> None:
+        if type(error_or_message) is str:
+            return self._write("ERROR", error_or_message, v)
+
+        tb = error_or_message.__traceback__
+        if tb is None:  # error not raised
+            return self._write("ERROR", repr(error_or_message))
+
+        name = error_or_message.__class__.__qualname__
+        error_or_message = f"{name}: {error_or_message!s}"
+        for fs in traceback.extract_tb(tb):
+
+            try:
+                filename = os.path.relpath(fs.filename, os.getcwd())
+            except ValueError:
+                filename = fs.filename
+
+            filename += ':' + str(fs.lineno)
+
+            error_or_message += f"\n{filename} -> {fs.line}"
+
+        self._write("ERROR", error_or_message)
 
     def observe(self, args: bool=True, kwargs: bool=True, return_: bool=True):
         def decorator(func):

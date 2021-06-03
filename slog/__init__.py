@@ -11,6 +11,7 @@ __all__ = (
     "warning",
     "info",
     "fatal",
+    "error",
     "quiet",
     "unquiet",
     "save_path"
@@ -23,6 +24,7 @@ unquiet = _log.unquiet
 debbug = _log.debbug
 warning = _log.warning
 info = _log.info
+error = _log.error
 fatal = _log.fatal
 observe = _log.observe
 
