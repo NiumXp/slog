@@ -1,6 +1,8 @@
 import io
+import os
+import __main__
 import datetime
-
+import contextlib
 
 _empty = object()
 
@@ -12,19 +14,24 @@ PREFIX_LINE_CHAR = ''
 
 
 class Log:
+    save_path = os.path.dirname(__main__.__file__) + "/logs"
+
     def __init__(self,
                  name: str,
-                 file: io.TextIOWrapper=None, *,
+                 file=None, *,
                  template: str=None,
                  format_: str=None,
                  ignore_if_closed: bool=False,
                  save: bool=True
     ) -> None:
-        if not isinstance(file, (io.TextIOBase, type(None))):
-            raise TypeError("TextIOBase expected")
-
         if file is None:
-            file = io.StringIO()
+            if save:
+                with contextlib.suppress(FileExistsError):
+                    os.makedirs(self.save_path)
+
+                file = open(os.path.join(self.save_path, name + ".txt"), 'w')
+            else:
+                file = io.StringIO()
 
         if template is None:
             template = "{} [{}\t] {}"

@@ -13,9 +13,10 @@ __all__ = (
     "fatal",
     "quiet",
     "unquiet",
+    "save_path"
 )
 
-_log = Log(name=__main__.__name__, file=sys.stdout, save=False)
+_log = Log(name=__main__.__name__, file=sys.stdout)
 
 quiet = _log.quiet
 unquiet = _log.unquiet
@@ -24,3 +25,11 @@ warning = _log.warning
 info = _log.info
 fatal = _log.fatal
 observe = _log.observe
+
+@property
+def save_path():
+    return _log.save_at
+
+@save_path.setter
+def save_path(x):
+    _log.save_path = x
