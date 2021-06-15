@@ -1,168 +1,188 @@
-import io
 import os
+import sys
+import inspect
 import __main__
-import datetime
 import traceback
+import itertools
 import contextlib
 
-_empty = object()
+_main_path, _ = os.path.split(__main__.__file__)
+_logs_path = os.path.join(_main_path, "logs")
 
-BREAK_LINE = '\n'
-OPEN_MULTLINE_CHAR = "┌ "
-PREFIX_MULTILINE_CHAR = "│ "
-CLOSE_MULTILINE_CHAR = "└ "
-PREFIX_LINE_CHAR = ''
+_separate = False
+
+
+def unique_log():
+    global _separate
+    _separate = True
+
+
+class _QuietManager:
+    def __init__(self, callback) -> None:
+        self.callback = callback
+
+    def __enter__(self):
+        pass
+
+    def __exit__(self, *_):
+        self.callback()
 
 
 class Log:
-    save_path = os.path.dirname(__main__.__file__) + "/logs"
+    _file = None
 
-    def __init__(self,
-                 name: str,
-                 file=None, *,
-                 template: str=None,
-                 format_: str=None,
-                 ignore_if_closed: bool=False,
-                 save: bool=True
-    ) -> None:
+    def __init__(self, name: str = None, file = None, template: str = None) -> None:
+        frame_info = inspect.getframeinfo(sys._getframe(1))
+
+        if name is None:
+            _, name = os.path.split(frame_info.filename)
+            name, _ = os.path.splitext(name)
+
         if file is None:
-            if save:
-                with contextlib.suppress(FileExistsError):
-                    os.makedirs(self.save_path)
+            with contextlib.suppress(FileExistsError):
+                os.mkdir(_logs_path)
 
-                file = open(os.path.join(self.save_path, name + ".txt"), 'w')
+            if not _separate:
+                if self._file is not None:
+                    file = self._file
+                else:
+                    path = os.path.join(_logs_path, ".log")
+                    file = open(path, 'w')
+                    self._file = file
             else:
-                file = io.StringIO()
+                path = os.path.join(_logs_path, f"{name}.log")
+                file = open(path, 'w')
 
         if template is None:
-            template = "{} [{}\t] {}"
-
-        if format_ is None:
-            format_ = "%y/%m/%d %H:%M:%S"
+            template = "[{type_}] {file}:{line} {message}"
 
         self.name = name
         self.file = file
         self.template = template
-        self.format_ = format_
-        self.ignore_if_closed = ignore_if_closed
-        self.save = save
 
-        self._quiet = False
+        self._quiet = set()
+        self._quiet_all = False
 
-    def _raw_write(self, s) -> None:
-        if self._quiet:
-            return
-
-        if self.file.closed and self.ignore_if_closed:
-            return
-
-        print(s, file=self.file)
-
-    def _write(self, p, s, v=_empty):
-        d = datetime.datetime.now()
-        d = d.strftime(self.format_)
-
-        if v is not _empty:
-            s = s.format(*v)
-
-        s = self.template.format(d, p, s)
-
-        if BREAK_LINE in s:
-            s = s.split(BREAK_LINE)
-
-            s[0] = OPEN_MULTLINE_CHAR + s[0]
-            for i in range(1, len(s)):
-                s[i] = PREFIX_MULTILINE_CHAR + s[i]
-            s[-1] = CLOSE_MULTILINE_CHAR + s[-1][len(PREFIX_MULTILINE_CHAR):]
-
-            s = BREAK_LINE.join(s)
+    def quiet(self, *types) -> _QuietManager:
+        if not types:
+            self._quiet_all = True
         else:
-            s = PREFIX_LINE_CHAR + s
+            self._quiet.update(map(str.upper, types))
 
-        self._raw_write(s)
+        callback = lambda *types: self.unquiet(*types)
+        return _QuietManager(callback)
 
-    def quiet(self) -> None:
-        self._quiet = True
+    def unquiet(self, *types) -> None:
+        if not types:
+            self._quiet_all = False
+            return self._quiet.clear()
 
-        # TODO Context manager? :D
+        for type_ in map(str.upper, types):
+            if type_ in self._quiet:
+                self._quiet.remove(type_)
 
-    def unquiet(self) -> None:
-        self._quiet = False
+    def _raw(self, type_, *args, **kwargs):
+        if self._quiet_all:
+            return
 
-    def info(self, message, *v) -> None:
-        self._write("INFO", message, v)
+        type_ = type_.upper()
+        if type_ in self._quiet:
+            return
 
-    def warning(self, message, *v) -> None:
-        self._write("WARNING", message, v)
+        if len(args) == 0:
+            message = ''
+        else:
+            message, *args = args
+            message = message.format(*args, **kwargs)
 
-    def debbug(self, message, *v) -> None:
-        self._write("DEBBUG", message, v)
+        frame = sys._getframe(2)
+        frame = inspect.getframeinfo(frame)
 
-    def fatal(self, message, *v) -> None:
-        self._write("FATAL", message, v)
-        exit(0)
+        path = os.path.relpath(frame.filename, _main_path)
+        if path == '.':
+            path = os.path.basename(frame.filename)
 
-    def error(self, error_or_message, *v) -> None:
-        if type(error_or_message) is str:
-            return self._write("ERROR", error_or_message, v)
+        message = self.template.format(name=self.name, type_=type_, file=path,
+                                       line=frame.lineno, message=message)
 
-        tb = error_or_message.__traceback__
-        if tb is None:  # error not raised
-            return self._write("ERROR", repr(error_or_message))
+        self.file.write(message + '\n')
 
-        name = error_or_message.__class__.__qualname__
-        error_or_message = f"{name}: {error_or_message!s}"
-        for fs in traceback.extract_tb(tb):
+    def debbug(self, *args, **kwargs) -> None:
+        if len(args) == 0:
+            return
 
-            try:
-                filename = os.path.relpath(fs.filename, os.getcwd())
-            except ValueError:
-                filename = fs.filename
+        if type(args[0]) is str:
+            return self._raw("DEBBUG", *args, **kwargs)
 
-            filename += ':' + str(fs.lineno)
+        # frame = sys._getframe(1)
 
-            error_or_message += f"\n{filename} -> {fs.line}"
+        message = ''
+        for arg in itertools.chain(args, kwargs.values()):
+            message += f"\n| ({type(arg)}, {arg!r})"
 
-        self._write("ERROR", error_or_message)
+        self._raw("DEBBUG", message)
 
-    def observe(self, args: bool=True, kwargs: bool=True, return_: bool=True):
-        def decorator(func):
-            def wrapper(*wa, **wk):
-                c = func.__code__
-                s = f"{func.__qualname__!r} at {c.co_filename}:{c.co_firstlineno+1}"
+    dbug = debbug
 
-                if args is True and wa != ():
-                    s += '\n' + "Args: " + str(wa)
+    def info(self, *args, **kwargs) -> None:
+        self._raw("INFO", *args, **kwargs)
 
-                if kwargs is True and wk != {}:
-                    s += '\n' + "Kwargs: " + str(wk)
+    def warning(self, *args, **kwargs) -> None:
+        self._raw("WARNING", *args, **kwargs)
 
-                error = False
+    warn = warning
+
+    def error(self, *errors_or_message, **kwargs) -> None:
+        raise NotImplementedError()
+
+    def critical(self, *args, **kwargs) -> None:
+        self._raw("CRITICAL", *args, **kwargs)
+
+    crit = critical
+
+    def observe(self, suppress: bool = False):
+        def decorator(function):
+            def wrapper(*args, **kwargs):
                 try:
-                    result = func(*wa, **wk)
+                    result = function(*args, **kwargs)
                 except Exception as e:
-                    m = e
-                    error = e
+                    message = f"({e.__class__.__qualname__}: {e!s})"
+
+                    for fs in traceback.extract_tb(e.__traceback__)[1:]:
+                        # The slice above is to ignore the "execution" inside
+                        # the try statement code.
+
+                        try:
+                            filename = os.path.relpath(fs.filename, os.getcwd())
+                        except ValueError:
+                            filename = fs.filename
+
+                        filename += ':' + str(fs.lineno)
+                        message += f"\n| {filename} <- {fs.line}"
+
+                    self._raw("ERROR", message)
+
+                    if not suppress:
+                        raise
                 else:
-                    m = result
+                    message = function.__name__
+                    if args:
+                        message += '\n' + f"| Args\t: {args}"
+                    if kwargs:
+                        message += '\n' + f"| Kwargs: {kwargs}"
+                    message += '\n' + f"| Return: {result}"
 
-                if return_:
-                    m = repr(m)
+                    self._raw("OBSERVE", message)
 
-                    if error:
-                        m = "Return (Raised): " + m
-                    else:
-                        m = "Return: " + m
-
-                    s += '\n' + m
-
-                self._write("OBSERVE", s)
-
-                if error:
-                    raise error
-
-                return result
-
+                    return result
             return wrapper
-
         return decorator
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        if self.file == sys.stdout:
+            return
+
+        self.file.close()

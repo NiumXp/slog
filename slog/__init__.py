@@ -1,37 +1,36 @@
 import sys
 import __main__
 
-from ._log import Log
+from ._log import Log, unique_log
 
 __version__ = "1.0.0"
 
 __all__ = (
     "Log",
+    "unique_log",
+
     "debbug",
     "warning",
     "info",
-    "fatal",
     "error",
+    "warn",
+    "crit",
+
     "quiet",
     "unquiet",
-    "save_path"
 )
 
 _log = Log(name=__main__.__name__, file=sys.stdout)
 
-quiet = _log.quiet
+quiet   = _log.quiet
 unquiet = _log.unquiet
-debbug = _log.debbug
-warning = _log.warning
-info = _log.info
-error = _log.error
-fatal = _log.fatal
-observe = _log.observe
 
-@property
-def save_path():
-    return _log.save_at
-
-@save_path.setter
-def save_path(x):
-    _log.save_path = x
+debbug      = _log.debbug
+warning     = _log.warning
+critical    = _log.critical
+info        = _log.info
+error       = _log.error
+observe     = _log.observe
+warn        = _log.warn
+crit        = _log.crit
+dbug        = _log.dbug
