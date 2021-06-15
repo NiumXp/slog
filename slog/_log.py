@@ -12,7 +12,8 @@ _logs_path = os.path.join(_main_path, "logs")
 _separate = False
 
 
-def unique_log():
+def unique_log() -> None:
+    """Makes all logs share the same file."""
     global _separate
     _separate = True
 
@@ -29,6 +30,31 @@ class _QuietManager:
 
 
 class Log:
+    """
+    Note
+    ----
+    The logs are saved in the `logs` folder in the main file path.
+
+    You can use the instances of this class as a context manager, like
+    `open` function.
+
+    ```python
+    with Log() as log:
+        log.info("Example!")
+    ```
+
+    Attributes
+    ----------
+    name : Optional[str]
+        The name of log. If not given, the name of file where the
+        instance was created is used.
+    file : Optional[SupportsWrite]
+        The file that log will write into. If not given, it creates one
+        file named `{name}.log`.
+    template : Optional[str]
+        The template to output messages to. You can use `type_`, `file`,
+        `line`, `message` and `name`.
+    """
     _file = None
 
     def __init__(self, name: str = None, file = None, template: str = None) -> None:
@@ -63,7 +89,17 @@ class Log:
         self._quiet = set()
         self._quiet_all = False
 
-    def quiet(self, *types) -> _QuietManager:
+    def quiet(self, *types: str) -> _QuietManager:
+        """Quiet `types`. If `types` is not given, all logs will be
+        silenced.
+
+        This function returns a context manager that calls `unquiet`.
+        ```python
+        slog.debbug("Hey!")  # Will be written.
+
+        with slog.quiet("debbug"):
+            slog.debbug("Hello?")  # Will not be written 
+        ```"""
         if not types:
             self._quiet_all = True
         else:
@@ -72,7 +108,9 @@ class Log:
         callback = lambda *types: self.unquiet(*types)
         return _QuietManager(callback)
 
-    def unquiet(self, *types) -> None:
+    def unquiet(self, *types: str) -> None:
+        """Unquiet `types`. If `types` is not given, all logs are heard
+        again."""
         if not types:
             self._quiet_all = False
             return self._quiet.clear()
@@ -108,6 +146,23 @@ class Log:
         self.file.write(message + '\n')
 
     def debbug(self, *args, **kwargs) -> None:
+        """Makes a `DEBBUG` log.
+
+        If the first item of `args` is a str, you can use ther others
+        `args` and `kwargs` to format it.
+        ```python
+        # Will transform the string to `I see you, NiumXp!`
+        slog.debbug("I see you, {}!", "NiumXp")
+        slog.debbug("I see you, {name}!", name="NiumXp")
+        ```
+        Otherwise, `args` and `kwargs` are writen using
+        `(<type>, <repr>)`.
+        ```python
+        slog.debbug(1, True, [])
+        # (<class 'int'>, 1)
+        # (<class 'bool'>, True)
+        # (<class 'list'>, [])
+        ```"""
         if len(args) == 0:
             return
 
@@ -124,23 +179,53 @@ class Log:
 
     dbug = debbug
 
-    def info(self, *args, **kwargs) -> None:
-        self._raw("INFO", *args, **kwargs)
+    def info(self, message: str, *args, **kwargs) -> None:
+        """Makes an `INFO` log.
 
-    def warning(self, *args, **kwargs) -> None:
-        self._raw("WARNING", *args, **kwargs)
+        You can use `args` and `kwargs` to format the `message`.
+        ```python
+        # Will transform the string to `Hello, NiumXp!`
+        slog.info("Hello, {}!", "NiumXp")
+        slog.info("Hello, {name}!", name="NiumXp")
+        ```"""
+        self._raw("INFO", message, *args, **kwargs)
+
+    def warning(self, message: str, *args, **kwargs) -> None:
+        """Makes a `WARNING` log.
+
+        You can use `args` and `kwargs` to format the `message`.
+        ```python
+        # Will transform the string to `Take care, NiumXp!`
+        slog.warning("Take care, {}!", "NiumXp")
+        slog.warning("Take care, {name}!", name="NiumXp")
+        ```"""
+        self._raw("WARNING", message, *args, **kwargs)
 
     warn = warning
 
     def error(self, *errors_or_message, **kwargs) -> None:
         raise NotImplementedError()
 
-    def critical(self, *args, **kwargs) -> None:
+    def critical(self, message: str, *args, **kwargs) -> None:
+        """Makes a `CRITICAL` log.
+
+        You can use `args` and `kwargs` to format the `message`.
+        ```python
+        # Will transform the string to `Run, NiumXp!`
+        slog.critical("Run, {}!", "NiumXp")
+        slog.critical("Run, {name}!", name="NiumXp")
+        ```"""
         self._raw("CRITICAL", *args, **kwargs)
 
     crit = critical
 
     def observe(self, suppress: bool = False):
+        """The decorator to observe a function when it's called and
+        raises an error.
+
+        When the error is logged, the error is raised again, you can
+        `suppress` it.
+        """
         def decorator(function):
             def wrapper(*args, **kwargs):
                 try:

@@ -1,5 +1,5 @@
 # slog
-A simple Python log library easy to use.
+A simple and easy-to-use Python registry library.
 
 ## Install
 ```

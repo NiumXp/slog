@@ -18,6 +18,8 @@ __all__ = (
 
     "quiet",
     "unquiet",
+
+    "observe"
 )
 
 _log = Log(name=__main__.__name__, file=sys.stdout)
