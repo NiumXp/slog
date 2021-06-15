@@ -6,6 +6,6 @@ setup(name="simple-py-log",
       version="1.0.0",
       packages=["slog"],
       license="MIT",
-      description="A simple and easy-to-use Python registry library.",
+      description="A simple and easy-to-use Python log library.",
       python_requires=">=3.4"
 )
